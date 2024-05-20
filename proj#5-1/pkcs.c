@@ -150,37 +150,57 @@ static int rsa_cipher(void *_m, const void *_k, const void *_n)
 static unsigned char *mgf(const unsigned char *seed, size_t seedLen, unsigned char *mask, size_t maskLen, int sha2_ndx)
 {
     uint32_t i, count, c;
-    size_t hLen = SHA2SIZE[sha2_ndx];
+    size_t hLen = SHA2SIZE[sha2_ndx]; // 해시 함수의 출력 길이를 설정
     unsigned char *mgfIn, *msg;
     
     /*
-     * maskLen 이 2^32*hLen보다큰지 확인
+     * maskLen이 2^32 * hLen보다 큰지 확인
+     * 너무 큰 값을 처리할 수 없으므로 NULL을 반환
      */
     if (maskLen > 0x0100000000 * hLen)
         return NULL;
     
+    // seedLen + 4 크기의 메모리 할당. 실패 시 NULL 반환
     if ((mgfIn = (unsigned char *)malloc(seedLen + 4)) == NULL)
         return NULL;
+    
+    // seed 값을 mgfIn에 복사
     memcpy(mgfIn, seed, seedLen);
+    
+    // 필요한 해시 블록 수를 계산
     count = maskLen / hLen + (maskLen % hLen ? 1 : 0);
+    
+    // count * hLen 크기의 메모리 할당. 실패 시 할당된 메모리 해제 후 NULL 반환
     if ((msg = (unsigned char *)malloc(count * hLen)) == NULL){
         free(mgfIn);
         return NULL;
     }
+    
+    // MGF1 알고리즘 수행
     for (i = 0; i < count; i++) {
         c = i;
+        
+        // mgfIn의 마지막 4바이트에 i 값을 저장 (big-endian 방식)
         mgfIn[seedLen + 3] = c & 0x000000ff; c >>= 8;
         mgfIn[seedLen + 2] = c & 0x000000ff; c >>= 8;
         mgfIn[seedLen + 1] = c & 0x000000ff; c >>= 8;
         mgfIn[seedLen] = c & 0x000000ff;
-        (*sha)(mgfIn, seedLen + 4, msg + i * hLen,sha2_ndx);
+        
+        // mgfIn을 해시하여 msg의 적절한 위치에 저장
+        (*sha)(mgfIn, seedLen + 4, msg + i * hLen, sha2_ndx);
     }
     
+    // maskLen 크기만큼 msg를 mask에 복사
     memcpy(mask, msg, maskLen);
+    
+    // 할당된 메모리 해제
     free(mgfIn);
     free(msg);
+    
+    // mask 반환
     return mask;
 }
+
 
 int rsaes_oaep_encrypt(const void *m, size_t mLen, const void *label, const void *e, const void *n, void *c, int sha2_ndx) {
     
